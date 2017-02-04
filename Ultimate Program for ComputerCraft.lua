@@ -53,7 +53,6 @@ if peripheral == nil then
 	error("Program is only designed for ComputerCraft.",0)
 end
 local cautious = true
-local event = require("event")
 local component = require("component")
 local sides = require("sides")
 local term = require("term")
@@ -61,11 +60,11 @@ local ic = component.inventory_controller
 local robot = require("robot")
 local cr = component.crafting
 local minFuel = 64
-local inventorySize = robot.inventorySize()
+local inventorySize = 16
 local furnacePresent = false
 local robotInventory = {}
 local chests = {}
-local inv = ic.getInventorySize(sides.front)
+local inv = peripheral.call("front","getInventorySize")
 local slots = {1,2,3,5,6,7,9,10,11}
 local craftingRecipes = {
 ["minecraft:planks"] = {4,"minecraft:log"},
@@ -110,11 +109,13 @@ end
 function updateInternalInventory(n)
 	if n then
 		robotInventory[n] = turtle.getItemDetail(n)
+		robotInventory[n].maxSize = turtle.getItemSpace(n) - robotInventory[n].count
 	else
 		robotInventory = {}
 		for i = 4, inventorySize do
 			if notCrafting(i) then
 				robotInventory[i] = turtle.getItemDetail(i)
+				robotInventory[i].maxSize = turtle.getItemSpace(i) - robotInventory[i].count
 			end
 		end
 	end
@@ -133,8 +134,8 @@ function checkUp(ix,id,count)
 				if not chests[ix]["stacks"][i] or chests[ix]["stacks"][i].name == id then
 					local oldSlot = (chests[ix]["stacks"][i] or {name = "", size = 0})
 					chests[ix]["stacks"][i] = peripheral.call("top","getStackInSlot",i)
-					if chests[ix]["stacks"][i] and (oldSlot.name == chests[ix]["stacks"][i].name or oldSlot.size == 0) then
-						cacheCount = cacheCount + chests[ix]["stacks"][i].size - oldSlot.size
+					if chests[ix]["stacks"][i] and (oldSlot.name == chests[ix]["stacks"][i].name or oldSlot.qty == 0) then
+						cacheCount = cacheCount + chests[ix]["stacks"][i].qty - oldSlot.qty
 						if cacheCount >= count then
 							break
 						end
@@ -159,15 +160,15 @@ function itemCount(id)
 	for i = 4, inventorySize do
 		if notCrafting(i) then
 			local slot = robotInventory[i]
-			if slot and slot.name == id then
-				count = count + slot.size
+			if slot and slot.id == id then
+				count = count + slot.count
 			end
 		end
 	end
 	for i = 1, #chests do
 		for o, v in pairs(chests[i]["stacks"]) do
 			if v.name == id then
-				count = count + v.size
+				count = count + v.qty
 			end
 		end
 	end
@@ -185,7 +186,7 @@ end
 
 function emptyBufferChest()
 	for i = 1, inv do
-		if ic.getSlotStackSize(sides.front,i) ~= 0 then
+		if peripheral.call("front","getStackInSlot",i) then
 			return false
 		end
 	end
@@ -202,7 +203,7 @@ function clearInventory(dontClearOne)
 				if not robot.dropUp() then
 					break
 				end
-				checkUp(1,robotInventory[i].name,robotInventory[i].size)
+				checkUp(1,robotInventory[i].id,robotInventory[i].count)
 			end
 		end
 	else
@@ -214,7 +215,7 @@ function clearInventory(dontClearOne)
 						lastSlot = p
 						break
 					end
-					checkUp(i,robotInventory[p].name,robotInventory[p].size)
+					checkUp(i,robotInventory[p].id,robotInventory[p].count)
 				end
 			end
 			if i < #chests and not ((lastSlot == inventorySize) or checkIfEmptyInventory()) then
@@ -240,7 +241,7 @@ end
 
 function nearestBuffer(id)
 	for i = 4, inventorySize do
-		if notCrafting(i) and (not robotInventory[i] or (robotInventory[i].name == id and robotInventory[i].size < robotInventory[i].maxSize)) then
+		if notCrafting(i) and (not robotInventory[i] or (robotInventory[i].id == id and robotInventory[i].count < robotInventory[i].maxSize)) then
 			return i
 		end
 	end
@@ -252,7 +253,7 @@ function stockInventory(dontClearOne)
 	for i = 1, inv do
 		local breaking = false
 		repeat
-			local sl = ic.getStackInSlot(sides.front,i)
+			local sl = peripheral.call("front","getStackInSlot",i)
 			if sl then
 				print(i)
 				local bu = nearestBuffer(sl.name)
@@ -261,7 +262,7 @@ function stockInventory(dontClearOne)
 					break
 				end
 				robot.select(bu)
-				if ic.suckFromSlot(sides.front,i,(robotInventory[bu] and (robotInventory[bu].maxSize - robotInventory[bu].size) or sl.size)) == false then
+				if ic.suckFromSlot(sides.front,i,(robotInventory[bu] and (robotInventory[bu].maxSize - robotInventory[bu].count) or sl.qty)) == false then
 					breaking = true
 				end
 				robotInventory[bu] = ic.getStackInInternalSlot(bu)
@@ -279,20 +280,20 @@ function pullItemFromStorage(id,count)
 	for i = 1, inventorySize do
 		if notCrafting(i) then
 			local tempSlot = robotInventory[i]
-			if tempSlot and tempSlot.name == id then
+			if tempSlot and tempSlot.id == id then
 				if intoSlot == 0 then
-					allTotal = allTotal + robotInventory[i].size
+					allTotal = allTotal + robotInventory[i].count
 					intoSlot = i
 					robot.select(intoSlot)
 				else
 					robot.select(i)
-					allTotal = allTotal + robotInventory[i].size
+					allTotal = allTotal + robotInventory[i].count
 					robot.transferTo(intoSlot)
-					if robotInventory[intoSlot].size + robotInventory[i].size > robotInventory[intoSlot].maxSize then
-						robotInventory[i].size = robotInventory[i].size - (robotInventory[intoSlot].maxSize - robotInventory[intoSlot].size)
-						robotInventory[intoSlot].size = robotInventory[intoSlot].maxSize
+					if robotInventory[intoSlot].count + robotInventory[i].count > robotInventory[intoSlot].maxSize then
+						robotInventory[i].count = robotInventory[i].count - (robotInventory[intoSlot].maxSize - robotInventory[intoSlot].count)
+						robotInventory[intoSlot].count = robotInventory[intoSlot].maxSize
 					else
-						robotInventory[intoSlot].size = robotInventory[intoSlot].size + robotInventory[i].size
+						robotInventory[intoSlot].count = robotInventory[intoSlot].count + robotInventory[i].count
 						robotInventory[i] = nil
 					end
 				end
@@ -318,8 +319,8 @@ function pullItemFromStorage(id,count)
 		chestTotal[i] = 0
 		for o, p in pairs(chests[i]["stacks"]) do
 			if p.name == id then
-				allTotal = allTotal + p.size
-				chestTotal[i] = chestTotal[i] + p.size
+				allTotal = allTotal + p.qty
+				chestTotal[i] = chestTotal[i] + p.qty
 				if i > 1 then
 					needsToMove = true
 				end
@@ -338,17 +339,17 @@ function pullItemFromStorage(id,count)
 		if chestTotal[i] > 0 then
 			for o, p in pairs(chests[i]["stacks"]) do
 				if p.name == id then
-					local newCount = (robotInventory[intoSlot] and robotInventory[intoSlot].size or 0)
+					local newCount = (robotInventory[intoSlot] and robotInventory[intoSlot].count or 0)
 					if newCount >= count then
 						done = true
 						break
 					end
 					ic.suckFromSlot(sides.up,o,count - newCount)
 					updateInternalInventory(intoSlot)
-					if p.size <= count - newCount then
+					if p.qty <= count - newCount then
 						chests[i]["stacks"][o] = nil
 					else
-						chests[i]["stacks"][o].size = p.size - count - newCount
+						chests[i]["stacks"][o].qty = p.qty - count - newCount
 					end
 				end
 			end
@@ -438,19 +439,19 @@ function mergeStack(name)
 	for i = 1, inventorySize do
 		if robotInventory[i] then
 			local v = robotInventory[i]
-			if v.name == name then
-				if intoSlot == 0 and v.size < v.maxSize then
+			if v.id == name then
+				if intoSlot == 0 and v.count < v.maxSize then
 					intoSlot = i
 				else
-					if intoSlot ~= 0 and v.size < v.maxSize then
+					if intoSlot ~= 0 and v.count < v.maxSize then
 						robot.select(i)
 						if robot.transferTo(intoSlot) then
-							if robotInventory[intoSlot].size + robotInventory[i].size > robotInventory[intoSlot].maxSize then
-								robotInventory[i].size = robotInventory[i].size - (robotInventory[intoSlot].maxSize - robotInventory[intoSlot].size)
-								robotInventory[intoSlot].size = robotInventory[intoSlot].maxSize
+							if robotInventory[intoSlot].count + robotInventory[i].count > robotInventory[intoSlot].maxSize then
+								robotInventory[i].count = robotInventory[i].count - (robotInventory[intoSlot].maxSize - robotInventory[intoSlot].count)
+								robotInventory[intoSlot].count = robotInventory[intoSlot].maxSize
 								intoSlot = i
 							else
-								robotInventory[intoSlot].size = robotInventory[intoSlot].size + robotInventory[i].size
+								robotInventory[intoSlot].count = robotInventory[intoSlot].count + robotInventory[i].count
 								robotInventory[i] = nil
 							end
 						end
@@ -472,8 +473,8 @@ function mergeStacks()
 	local names = {}
 	for i = 1, inventorySize do
 		if robotInventory[i] then
-			if notInList(names,robotInventory[i].name) then
-				table.insert(names,robotInventory[i].name)
+			if notInList(names,robotInventory[i].id) then
+				table.insert(names,robotInventory[i].id)
 			end
 		end
 	end
@@ -484,12 +485,12 @@ end
 function checkFurnaceFuel()
 	local originalSlot = robot.select()
 	local fuelSlot = ic.getStackInSlot(sides.down,2)
-	if fuelSlot == nil or fuelSlot.size < minFuel then
-		fuelSlot = (fuelSlot and fuelSlot or {["size"] = 0})
+	if fuelSlot == nil or fuelSlot.qty < minFuel then
+		fuelSlot = (fuelSlot and fuelSlot or {["qty"] = 0})
 		local coal = itemCount("minecraft:coal")
-		if coal - fuelSlot.size > 0 then
-			if minStack(coal,fuelSlot.size) > 0 then
-				local newSlot = pullItemFromStorage("minecraft:coal",minStack(coal,fuelSlot.size))
+		if coal - fuelSlot.qty > 0 then
+			if minStack(coal,fuelSlot.qty) > 0 then
+				local newSlot = pullItemFromStorage("minecraft:coal",minStack(coal,fuelSlot.qty))
 				ic.dropIntoSlot(sides.down,2)
 				robotInventory[newSlot] = nil
 				robot.select(originalSlot)
@@ -501,18 +502,18 @@ end
 function clearCrafting()
 	if cautious then
 		for i = 1, #slots do
-			local slot = ic.getStackInInternalSlot(slots[i])
+			local slot = turtle.getItemDetail(slots[i])
 			if slot then
-				local buffer = nearestBuffer(slot.name)
+				local buffer = nearestBuffer(slot.id)
 				if buffer > 0 then
 					robot.select(i)
 					robot.transferTo(buffer)
-					if slot.size > robotInventory[buffer].maxSize - robotInventory[buffer].size then
+					if slot.count > robotInventory[buffer].maxSize - robotInventory[buffer].count then
 						stockInventory()
 						clearCrafting()
 						break
 					else
-						robotInventory[buffer].size = robotInventory[buffer].size + slot.size
+						robotInventory[buffer].count = robotInventory[buffer].count + slot.count
 					end
 				else
 					stockInventory()
@@ -643,10 +644,10 @@ function craft(id,count)
 					for m = 1, #v[3] do
 						if v[3][m] > 0 and v[2][v[3][m]] == o  then
 							robot.transferTo(slots[m],math.ceil((1/v[1])*(count - currentCount)))
-							if math.ceil((1/v[1])*(count - currentCount)) >= (robotInventory[item] and robotInventory[item].size or 0) then
+							if math.ceil((1/v[1])*(count - currentCount)) >= (robotInventory[item] and robotInventory[item].count or 0) then
 								robotInventory[item] = nil
 							else
-								robotInventory[item].size = robotInventory[item].size - math.ceil((1/v[1])*(count - currentCount))
+								robotInventory[item].count = robotInventory[item].count - math.ceil((1/v[1])*(count - currentCount))
 							end
 						end
 					end
@@ -654,10 +655,10 @@ function craft(id,count)
 					for m = 2, #v do
 						if v[m] == o then
 							robot.transferTo(slots[m - 1],math.ceil((1/v[1])*(count - currentCount)))
-							if math.ceil((1/v[1])*(count - currentCount)) >= robotInventory[item].size then
+							if math.ceil((1/v[1])*(count - currentCount)) >= robotInventory[item].count then
 								robotInventory[item] = nil
 							else
-								robotInventory[item].size = robotInventory[item].size - math.ceil((1/v[1])*(count - currentCount))
+								robotInventory[item].count = robotInventory[item].count - math.ceil((1/v[1])*(count - currentCount))
 							end
 						end
 					end
@@ -694,11 +695,11 @@ function pushItemToStorage(slot)
 		local oldCount = robot.count()
 		local drop = robot.dropUp()
 		if drop and robot.count() == 0 then
-			checkUp(i,currentSlot.name,oldCount)
+			checkUp(i,currentSlot.id,oldCount)
 			robotInventory[slot] = nil
 			break
 		elseif drop then
-			checkUp(i,currentSlot.name,oldCount)
+			checkUp(i,currentSlot.id,oldCount)
 		end
 		if #chests > 1 and i < #chests then
 			forward()
@@ -923,10 +924,10 @@ function addNewMiner()
 		robot.turnLeft()
 		local tr = pullItemFromStorage("ComputerCraft:CC-TurtleExpanded",1)
 		robot.placeDown(sides.right)
-		if robotInventory[tr].size == 1 then
+		if robotInventory[tr].count == 1 then
 			robotInventory[tr] = nil
 		else
-			robotInventory[tr].size = robotInventory[tr].size - 1
+			robotInventory[tr].count = robotInventory[tr].count - 1
 		end
 		robot.useDown()
 		for i = 1, miners + 1 do
@@ -975,8 +976,8 @@ function addNewChest()
 	end
 	local chest = pullItemFromStorage("minecraft:chest",1)
 	robot.placeUp()
-	robotInventory[chest].size = robotInventory[chest].size - 1
-	if robotInventory[chest].size == 0 then
+	robotInventory[chest].count = robotInventory[chest].count - 1
+	if robotInventory[chest].count == 0 then
 		robotInventory[chest] = nil
 	end
 	for i = 1, #chests * 2 do
