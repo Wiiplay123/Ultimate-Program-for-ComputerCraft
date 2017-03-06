@@ -2,19 +2,19 @@
 
 INSTRUCTIONS:
 
-Place single chests in front of and on top of robot.
+Place single chests in front of and on top of turtle.
 Place a single hopper to the left of front chest.
-Place a furnace under the robot.
-Add to instructions are more requirements are added.
+Place a furnace under the turtle.
+Add to instructions as more requirements are added.
 
 
 VALUE DOCUMENTATION:
 
 minFuel (number): Minimum fuel allowed in furnace before refuelling
 chests (table): External Chest Cache
-robotInventory (table): Internal Inventory Cache
+turtleInventory (table): Internal Inventory Cache
 inventorySize (number): Internal Inventory Size
-inv (number): Buffer Chest Size
+inv (number): Main Buffer Chest Size
 slots (table): List of crafting slots
 craftingRecipes (table): List of crafting recipes. Key is item name to be crafted, value is a table of either {itemCount,(1-9 itemName of items to place in crafting grid)} or {itemCount, {Item Names}, {Keys to previous item name table}}.
 furnaceRecipes (table): List of furnace recipes. Key is resulting item name, value is item name to be smelted/cooked.
@@ -24,12 +24,13 @@ miners (number): Amount of active turtle miners
 FUNCTION DOCUMENTATION:
 
 notCrafting(slot: number) (Returns boolean): Returns whether or not (slot) is a crafting slot.
-updateInternalInventory([slot: number]) (Returns nil): Updates internal inventory cache table (robotInventory) slot (slot), or if (slot) is absent, updates entire table.
-checkUp(chestIndex: number, [itemName: string, itemCount: number]) (Returns nil if itemName and itemCount exist, returns table containing chest contents otherwise) return: Updates chests[chestIndex] with the contents of the chest currently above the robot. If itemName and itemCount are BOTH present, will only update for places that the items could possibly be placed in since the last cache update. (Used IMMEDIATELY after dropping anything into a chest)
-itemCount(itemName: string) (Returns number): Returns combined amount of (itemName) in both (robotInventory) and (chests).
-checkIfEmptyInventory() (Returns boolean): Checks if robot's internal inventory is empty. (not counting crafting slots)
+turnAround() (Returns nil): Does turtle.turnLeft() twice.
+updateInternalInventory([slot: number]) (Returns nil): Updates internal inventory cache table (turtleInventory) slot (slot), or if (slot) is absent, updates entire table.
+checkUp(chestIndex: number, [itemName: string, itemCount: number]) (Returns nil if itemName and itemCount exist, returns table containing chest contents otherwise) return: Updates chests[chestIndex] with the contents of the chest currently above the turtle. If itemName and itemCount are BOTH present, will only update for places that the items could possibly be placed in since the last cache update. (Used IMMEDIATELY after dropping anything into a chest)
+itemCount(itemName: string) (Returns number): Returns combined amount of (itemName) in both (turtleInventory) and (chests).
+checkIfEmptyInventory() (Returns boolean): Checks if turtle's internal inventory is empty. (not counting crafting slots)
 emptyBufferChest() (Returns boolean): Checks if buffer chest is empty.
-clearInventory([dontClearOne: boolean]) (Returns nil): Puts entire internal inventory (Unless dontClearOne is true, in which case everything except slot 1) into chests, and changes (robotInventory) and (chests) contents to match. 
+clearInventory([dontClearOne: boolean]) (Returns nil): Puts entire internal inventory (Unless dontClearOne is true, in which case everything except slot 1) into chests, and changes (turtleInventory) and (chests) contents to match. 
 nearestBuffer([itemName: string]) (Returns number): Returns lowest internal inventory slot that can hold (itemName), or the lowest empty slot if itemName is not set.
 stockInventory([dontClearOne: boolean]) (Returns nil): Fills inventory with contents of buffer chest. If inventory is full, calls clearInventory([dontClearOne: boolean]) to clear inventory. Repeats until buffer chest is empty.
 pullItemFromStorage(itemName: string, itemCount: number) (Returns number): Pulls item from external chest inventory if item is not already in internal inventory. Returns and selects slot number item is in once item is in internal inventory.
@@ -39,11 +40,12 @@ minStack(coalAvailable: number, coalInFuelSlot: number) (Returns number): Return
 mergeStack(itemName: string) (Returns nil): Merges all stacks of (itemName) in internal inventory to the lowest amount of stacks possible.
 notInList(list: table, string: string) (Returns boolean): Returns true if (string) is not in (list), false otherwise.
 mergeStacks() (Returns nil): Merges all stacks in internal inventory to the lowest amount of stacks possible using mergeStack(itemName: string).
-checkFurnaceFuel() (Returns nil): Refuels furnace below robot if fuel is below (minFuel).
+checkFurnaceFuel() (Returns nil): Refuels furnace below turtle if fuel is below (minFuel).
 clearCrafting() (Returns nil): Clears crafting slots.
 craft(itemName: string, itemCount: number) (Returns boolean): Puts (itemCount) of (itemName) into lowest available slot. If items are already available in internal inventory, will select slot. If not, will use pullItemFromStorage(itemName, itemCount) to pull more items in. If there are not enough items in external inventory, will craft the required items.
 pushItemToStorage(slot: number) (Returns nil): Puts items in (slot) into external inventory.
 updateAllChests()
+digAndUpdate(direction: string) (Returns nil): Direction can be nil, "up", or "down". Digs a block if it exists, and puts it in the inventory cache. Selects previously selected slot afterwards.
 makePickaxe(i: number) (Returns nil): Helper function for addNewChest(), crafts pickaxe if one isn't already available and then moves forward.
 addNewMiner() (Returns nil): Adds new miner and increments (miners) if successful
 addNewChest() (Returns nil): Adds new external chest to external chest inventory and updates (chests) to match.
@@ -53,17 +55,12 @@ if peripheral == nil then
 	error("Program is only designed for ComputerCraft.",0)
 end
 local cautious = true
-local component = require("component")
-local sides = require("sides")
-local term = require("term")
-local ic = component.inventory_controller
-local robot = require("robot")
-local cr = component.crafting
 local minFuel = 64
 local inventorySize = 16
-local furnacePresent = false
-local robotInventory = {}
-local chests = {}
+--local turtleInventory = {}
+turtleInventory = {}
+--local chests = {}
+chests = {}
 local inv = peripheral.call("front","getInventorySize")
 local slots = {1,2,3,5,6,7,9,10,11}
 local craftingRecipes = {
@@ -99,23 +96,34 @@ local furnaceRecipes = {
 	["minecraft:stone"] = "minecraft:cobblestone",
 	["minecraft:iron_ingot"] = "minecraft:iron_ore",
 	["minecraft:gold_ingot"] = "minecraft:gold_ore",
-	["minecraft:glass"] = "minecraft:sand"
+	["minecraft:glass"] = "minecraft:sand",
+	["minecraft:cooked_porkchop"] = "minecraft:porkchop",
+	["minecraft:cooked_beef"] = "minecraft:beef"
 }
 
 function notCrafting(s)
 	return s > 11 or s == 4 or s == 8
 end
 
+function turnAround()
+	turtle.turnLeft()
+	turtle.turnLeft()
+end
+
 function updateInternalInventory(n)
 	if n then
-		robotInventory[n] = turtle.getItemDetail(n)
-		robotInventory[n].maxSize = turtle.getItemSpace(n) - robotInventory[n].count
+		turtleInventory[n] = turtle.getItemDetail(n)
+		if turtleInventory[n] then
+			turtleInventory[n].maxSize = turtle.getItemSpace(n) + turtleInventory[n].count
+		end
 	else
-		robotInventory = {}
+		turtleInventory = {}
 		for i = 4, inventorySize do
 			if notCrafting(i) then
-				robotInventory[i] = turtle.getItemDetail(i)
-				robotInventory[i].maxSize = turtle.getItemSpace(i) - robotInventory[i].count
+				turtleInventory[i] = turtle.getItemDetail(i)
+				if turtleInventory[i] then
+					turtleInventory[i].maxSize = turtle.getItemSpace(i) + turtleInventory[i].count
+				end
 			end
 		end
 	end
@@ -131,10 +139,10 @@ function checkUp(ix,id,count)
 		if (oldSize == chests[ix]["size"]) and id and count then
 			local cacheCount = 0
 			for i = 1, chests[ix]["size"] do
-				if not chests[ix]["stacks"][i] or chests[ix]["stacks"][i].name == id then
-					local oldSlot = (chests[ix]["stacks"][i] or {name = "", size = 0})
+				if not chests[ix]["stacks"][i] or chests[ix]["stacks"][i].id == id then
+					local oldSlot = (chests[ix]["stacks"][i] or {id = "", qty = 0})
 					chests[ix]["stacks"][i] = peripheral.call("top","getStackInSlot",i)
-					if chests[ix]["stacks"][i] and (oldSlot.name == chests[ix]["stacks"][i].name or oldSlot.qty == 0) then
+					if chests[ix]["stacks"][i] and (oldSlot.id == chests[ix]["stacks"][i].id or oldSlot.qty == 0) then
 						cacheCount = cacheCount + chests[ix]["stacks"][i].qty - oldSlot.qty
 						if cacheCount >= count then
 							break
@@ -154,20 +162,20 @@ function checkUp(ix,id,count)
 		return {["stacks"] = stacks,["size"] = size}
 	end
 end
--- Converted to here
+
 function itemCount(id)
 	local count = 0
 	for i = 4, inventorySize do
 		if notCrafting(i) then
-			local slot = robotInventory[i]
-			if slot and slot.id == id then
+			local slot = turtleInventory[i]
+			if slot and slot.name == id then
 				count = count + slot.count
 			end
 		end
 	end
 	for i = 1, #chests do
 		for o, v in pairs(chests[i]["stacks"]) do
-			if v.name == id then
+			if v.id == id then
 				count = count + v.qty
 			end
 		end
@@ -177,7 +185,7 @@ end
 
 function checkIfEmptyInventory()
 	for i = 1, inventorySize do
-		if robot.count(i) > 0 then
+		if turtle.getItemCount(i) > 0 then
 			return false
 		end
 	end
@@ -198,29 +206,30 @@ function clearInventory(dontClearOne)
 	local lastSlot = (dontClearOne and 2 or 1)
 	if #chests == 1 then
 		for i = (dontClearOne and 2 or 1), inventorySize do
-			if robotInventory[i] then
-				robot.select(i)
-				if not robot.dropUp() then
+			local inspect = turtle.getItemDetail(i)
+			if inspect then
+				turtle.select(i)
+				if not turtle.dropUp() then
 					break
 				end
-				checkUp(1,robotInventory[i].id,robotInventory[i].count)
+				checkUp(1,inspect.name,inspect.count)
 			end
 		end
 	else
 		for i = 1, #chests do
 			for p = lastSlot, inventorySize do
-				if robotInventory[p] then
-					robot.select(p)
-					if not robot.dropUp() then
+				if turtleInventory[p] then
+					turtle.select(p)
+					if not turtle.dropUp() then
 						lastSlot = p
 						break
 					end
-					checkUp(i,robotInventory[p].id,robotInventory[p].count)
+					checkUp(i,turtleInventory[p].name,turtleInventory[p].count)
 				end
 			end
 			if i < #chests and not ((lastSlot == inventorySize) or checkIfEmptyInventory()) then
 				if i == 1 then
-					robot.turnRight()
+					turtle.turnRight()
 				end
 				forward()
 				forward()
@@ -233,15 +242,15 @@ function clearInventory(dontClearOne)
 			back()
 		end ]]
 		if chestz > 0 then
-			robot.turnLeft()
+			turtle.turnLeft()
 		end
 	end
-	robotInventory = {}
+	turtleInventory = {}
 end
 
 function nearestBuffer(id)
 	for i = 4, inventorySize do
-		if notCrafting(i) and (not robotInventory[i] or (robotInventory[i].id == id and robotInventory[i].count < robotInventory[i].maxSize)) then
+		if notCrafting(i) and (not turtleInventory[i] or (turtleInventory[i].name == id and turtleInventory[i].count < turtleInventory[i].maxSize)) then
 			return i
 		end
 	end
@@ -249,23 +258,29 @@ function nearestBuffer(id)
 end
 
 function stockInventory(dontClearOne)
+	--printTitle("Ultimate Program Running","Stocking Inventory")
 	repeat
 	for i = 1, inv do
+		--printTitle("Ultimate Program Running","Checking front chest")
 		local breaking = false
 		repeat
 			local sl = peripheral.call("front","getStackInSlot",i)
 			if sl then
-				print(i)
-				local bu = nearestBuffer(sl.name)
+				--print(i)
+				local bu = nearestBuffer(sl.id)
 				if bu == 0 or not bu then
 					breaking = true
 					break
 				end
-				robot.select(bu)
-				if ic.suckFromSlot(sides.front,i,(robotInventory[bu] and (robotInventory[bu].maxSize - robotInventory[bu].count) or sl.qty)) == false then
+				turtle.select(bu)
+				--[[
+				if not peripheral.call("front","pushItemIntoSlot",i,(turtleInventory[bu] and (turtleInventory[bu].maxSize - turtleInventory[bu].count) or sl.qty),turtle.getSelectedSlot()) then
+					breaking = true
+				end]]
+				if not turtle.suck() then
 					breaking = true
 				end
-				robotInventory[bu] = ic.getStackInInternalSlot(bu)
+				updateInternalInventory(bu)
 			end
 		until breaking or not sl
 	end
@@ -274,31 +289,32 @@ function stockInventory(dontClearOne)
 	end
 	until emptyBufferChest()
 end
+
 function pullItemFromStorage(id,count)
 	local allTotal = 0
 	local intoSlot = 0
 	for i = 1, inventorySize do
 		if notCrafting(i) then
-			local tempSlot = robotInventory[i]
-			if tempSlot and tempSlot.id == id then
+			local tempSlot = turtleInventory[i]
+			if tempSlot and tempSlot.name == id then
 				if intoSlot == 0 then
-					allTotal = allTotal + robotInventory[i].count
+					allTotal = allTotal + turtleInventory[i].count
 					intoSlot = i
-					robot.select(intoSlot)
+					turtle.select(intoSlot)
 				else
-					robot.select(i)
-					allTotal = allTotal + robotInventory[i].count
-					robot.transferTo(intoSlot)
-					if robotInventory[intoSlot].count + robotInventory[i].count > robotInventory[intoSlot].maxSize then
-						robotInventory[i].count = robotInventory[i].count - (robotInventory[intoSlot].maxSize - robotInventory[intoSlot].count)
-						robotInventory[intoSlot].count = robotInventory[intoSlot].maxSize
+					turtle.select(i)
+					allTotal = allTotal + turtleInventory[i].count
+					turtle.transferTo(intoSlot)
+					if turtleInventory[intoSlot].count + turtleInventory[i].count > turtleInventory[intoSlot].maxSize then
+						turtleInventory[i].count = turtleInventory[i].count - (turtleInventory[intoSlot].maxSize - turtleInventory[intoSlot].count)
+						turtleInventory[intoSlot].count = turtleInventory[intoSlot].maxSize
 					else
-						robotInventory[intoSlot].count = robotInventory[intoSlot].count + robotInventory[i].count
-						robotInventory[i] = nil
+						turtleInventory[intoSlot].count = turtleInventory[intoSlot].count + turtleInventory[i].count
+						turtleInventory[i] = nil
 					end
 				end
 				if allTotal >= count then
-					robot.select(intoSlot)
+					turtle.select(intoSlot)
 					return intoSlot
 				end
 			end
@@ -318,7 +334,7 @@ function pullItemFromStorage(id,count)
 	for i = 1, #chests do
 		chestTotal[i] = 0
 		for o, p in pairs(chests[i]["stacks"]) do
-			if p.name == id then
+			if p.id == id then
 				allTotal = allTotal + p.qty
 				chestTotal[i] = chestTotal[i] + p.qty
 				if i > 1 then
@@ -331,28 +347,31 @@ function pullItemFromStorage(id,count)
 		end
 	end
 	if needsToMove then
-		robot.turnRight()
+		turtle.turnRight()
 	end
-	robot.select(intoSlot)
+	turtle.select(intoSlot)
 	local done = false
 	for i = 1, #chestTotal do
 		if chestTotal[i] > 0 then
+			repeat
 			for o, p in pairs(chests[i]["stacks"]) do
-				if p.name == id then
-					local newCount = (robotInventory[intoSlot] and robotInventory[intoSlot].count or 0)
+				if p.id == id then
+					local newCount = (turtleInventory[intoSlot] and turtleInventory[intoSlot].count or 0)
 					if newCount >= count then
 						done = true
 						break
 					end
-					ic.suckFromSlot(sides.up,o,count - newCount)
+					peripheral.call("top","pushItemIntoSlot","down",o,count - newCount,intoSlot)
 					updateInternalInventory(intoSlot)
 					if p.qty <= count - newCount then
 						chests[i]["stacks"][o] = nil
+						break
 					else
 						chests[i]["stacks"][o].qty = p.qty - count - newCount
 					end
 				end
 			end
+			until done
 		end
 		if needsToMove and i < #chestTotal and not done then
 			forward()
@@ -368,7 +387,7 @@ function pullItemFromStorage(id,count)
 			back()
 			back()
 		end
-		robot.turnLeft()
+		turtle.turnLeft()
 	end
 	return intoSlot
 end
@@ -381,9 +400,12 @@ function checkTotalInventoryCapacity()
 	return itemsLeft
 end
 
+
 function canCraft(id,count)
+	--printTitle("Checking craft "..count.." of "..id)
 	local currentCount = 0
 	currentCount = currentCount + itemCount(id)
+	--printTitle("Currently "..currentCount.." of "..id)
 	if currentCount >= count then
 		return true
 	end
@@ -406,7 +428,7 @@ function canCraft(id,count)
 				end
 			end
 			for o, p in pairs(items) do
-				items[o] = math.ceil(items[o]*(count - currentCount))
+				items[o] = items[o]*math.ceil(count/v[1])*v[1]
 			end
 		else
 			for o = 2, #v do
@@ -437,22 +459,22 @@ end
 function mergeStack(name)
 	local intoSlot = 0
 	for i = 1, inventorySize do
-		if robotInventory[i] then
-			local v = robotInventory[i]
-			if v.id == name then
+		if turtleInventory[i] then
+			local v = turtleInventory[i]
+			if v.name == name then
 				if intoSlot == 0 and v.count < v.maxSize then
 					intoSlot = i
 				else
 					if intoSlot ~= 0 and v.count < v.maxSize then
-						robot.select(i)
-						if robot.transferTo(intoSlot) then
-							if robotInventory[intoSlot].count + robotInventory[i].count > robotInventory[intoSlot].maxSize then
-								robotInventory[i].count = robotInventory[i].count - (robotInventory[intoSlot].maxSize - robotInventory[intoSlot].count)
-								robotInventory[intoSlot].count = robotInventory[intoSlot].maxSize
+						turtle.select(i)
+						if turtle.transferTo(intoSlot) then
+							if turtleInventory[intoSlot].count + turtleInventory[i].count > turtleInventory[intoSlot].maxSize then
+								turtleInventory[i].count = turtleInventory[i].count - (turtleInventory[intoSlot].maxSize - turtleInventory[intoSlot].count)
+								turtleInventory[intoSlot].count = turtleInventory[intoSlot].maxSize
 								intoSlot = i
 							else
-								robotInventory[intoSlot].count = robotInventory[intoSlot].count + robotInventory[i].count
-								robotInventory[i] = nil
+								turtleInventory[intoSlot].count = turtleInventory[intoSlot].count + turtleInventory[i].count
+								turtleInventory[i] = nil
 							end
 						end
 					end
@@ -472,9 +494,9 @@ end
 function mergeStacks()
 	local names = {}
 	for i = 1, inventorySize do
-		if robotInventory[i] then
-			if notInList(names,robotInventory[i].id) then
-				table.insert(names,robotInventory[i].id)
+		if turtleInventory[i] then
+			if notInList(names,turtleInventory[i].name) then
+				table.insert(names,turtleInventory[i].name)
 			end
 		end
 	end
@@ -483,17 +505,20 @@ function mergeStacks()
 	end
 end
 function checkFurnaceFuel()
-	local originalSlot = robot.select()
-	local fuelSlot = ic.getStackInSlot(sides.down,2)
+	local originalSlot = turtle.getSelectedSlot()
+	local fuelSlot = peripheral.call("bottom","getStackInSlot",2)
 	if fuelSlot == nil or fuelSlot.qty < minFuel then
 		fuelSlot = (fuelSlot and fuelSlot or {["qty"] = 0})
 		local coal = itemCount("minecraft:coal")
 		if coal - fuelSlot.qty > 0 then
 			if minStack(coal,fuelSlot.qty) > 0 then
 				local newSlot = pullItemFromStorage("minecraft:coal",minStack(coal,fuelSlot.qty))
-				ic.dropIntoSlot(sides.down,2)
-				robotInventory[newSlot] = nil
-				robot.select(originalSlot)
+				--peripheral.call("bottom","pushItemIntoSlot("west",3,1,9)) 1 fuel from slot 3 to slot 9 of dropper
+				--peripheral.call("bottom","pullItemIntoSlot","up"
+				turtle.dropDown()
+				turtleInventory[newSlot] = nil
+				turtle.select(originalSlot)
+				updateInternalInventory(newSlot)
 			end
 		end
 	end
@@ -504,16 +529,16 @@ function clearCrafting()
 		for i = 1, #slots do
 			local slot = turtle.getItemDetail(slots[i])
 			if slot then
-				local buffer = nearestBuffer(slot.id)
+				local buffer = nearestBuffer(slot.name)
 				if buffer > 0 then
-					robot.select(i)
-					robot.transferTo(buffer)
-					if slot.count > robotInventory[buffer].maxSize - robotInventory[buffer].count then
+					turtle.select(i)
+					turtle.transferTo(buffer)
+					if slot.count > turtleInventory[buffer].maxSize - turtleInventory[buffer].count then
 						stockInventory()
 						clearCrafting()
 						break
 					else
-						robotInventory[buffer].count = robotInventory[buffer].count + slot.count
+						turtleInventory[buffer].count = turtleInventory[buffer].count + slot.count
 					end
 				else
 					stockInventory()
@@ -525,26 +550,27 @@ function clearCrafting()
 	end
 end
 
---[[
-function lowFuel()
-	if computer.energy() < computer.maxEnergy()/2 then
-	
+function clearFurnaceBufferChest()
+	for i = 1, 27 do
+		peripheral.call("front","pullItem","down",i)
 	end
-end]]
+end
 
 function craft(id,count)
+	printTitle("Ultimate Program Running","Crafting "..count.." of "..id)
+	-- peripheral.call("top","getInventorySize")
 	local itc = itemCount(id)
-	local currentCount = 0
-	currentCount = currentCount + itc
+	local currentCount = itc
 	if itc > 0 then
+		
 		local b = nearestBuffer(id)
-		local c = robot.count(b)
-		if c > count and count > 0 then
-			robot.select(b)
+		local c = turtle.getItemCount(b)
+		if c >= count and count > 0 then
+			turtle.select(b)
 			return true
 		else
 			if itc >= count then
-				pullItemFromStorage(id,count - c)
+				pullItemFromStorage(id,count)
 				return true
 			else
 				pullItemFromStorage(id,itc)
@@ -560,44 +586,45 @@ function craft(id,count)
 			currentCount = currentCount + itemCount(furnaceRecipes[id])
 		end
 		if ready then
-			local hasFurnace = true
-			if furnacePresent or ic.getInventorySize(sides.down) == 3 then
-				furnacePresent = true
-				repeat
-					checkFurnaceFuel()
-				until not ic.getStackInSlot(sides.down,1)
-				local stack = ic.getStackInSlot(sides.down,3)
-				if stack then
-					if nearestBuffer(stack.name) == 0 then
-						stockInventory()
-					end
-					local bfr = nearestBuffer(stack.name)
-					ic.select(bfr)
-					ic.suckFromSlot(sides.down,3)
-					robotInventory[bfr] = stack
+			-- Furnace stuff happens here
+			turtle.turnLeft()
+			turtle.turnRight()
+			repeat
+				checkFurnaceFuel()
+			until not peripheral.call("bottom","getStackInSlot",1)
+			turtle.turnLeft()
+			turtle.turnRight()
+			local stack = peripheral.call("bottom","getStackInSlot",3)
+			if stack then
+				if nearestBuffer(stack.id) == 0 then
+					stockInventory()
 				end
-				pullItemFromStorage(furnaceRecipes[id],count - itc)
-				ic.dropIntoSlot(sides.down,1)
-				repeat
-					checkFurnaceFuel()
-				until not ic.getStackInSlot(sides.down,1)
-				local stack = ic.getStackInSlot(sides.down,3)
-				if stack then
-					if nearestBuffer(stack.name) == 0 then
-						stockInventory()
-					end
-					local bfr = nearestBuffer(stack.name)
-					robot.select(bfr)
-					ic.suckFromSlot(sides.down,3)
-					robotInventory[bfr] = stack
+				local bfr = nearestBuffer(stack.id)
+				turtle.turnLeft()
+				turtle.turnRight()
+				peripheral.call("bottom","pushItem",2,3,64,bfr)
+				updateInternalInventory(bfr)
+			end 
+			pullItemFromStorage(furnaceRecipes[id],count)
+			turtle.drop()
+			repeat
+				checkFurnaceFuel()
+			until not peripheral.call("bottom","getStackInSlot",1)
+			local stack = peripheral.call("bottom","getStackInSlot",3)
+			if stack then
+				if nearestBuffer(stack.id) == 0 then
+					stockInventory()
 				end
-			else
-				error("FURNACE MISSING",0)
+				local bfr = nearestBuffer(stack.id)
+				turtle.turnLeft()
+				turtle.turnRight()
+				peripheral.call("bottom","pushItem",2,3,64,bfr)
+				updateInternalInventory(bfr)
 			end
 			if itemCount(id) >= count then
 				return true
 			end
-		end
+		end 
 		if craftingRecipes[id] then
 			local v = craftingRecipes[id]
 			local items = {}
@@ -620,86 +647,85 @@ function craft(id,count)
 					end
 				end
 			end
+			local itemsOld = items
 			for o, p in pairs(items) do
-				items[o] = math.ceil(items[o]*(count - currentCount))
+				items[o] = items[o]*math.ceil(count/v[1])*v[1]
 			end
 			for o, p in pairs(items) do
 				if not canCraft(o,p) then
 					return false
 				end
 			end
-			clearCrafting()
+			if not checkIfEmptyInventory() then
+				clearInventory()
+				clearCrafting()
+			end
 			for o, p in pairs(items) do
 				if itemCount(o) < p then
 					if canCraft(o,p) then
-						craft(o,p)
+						craft(o,p) -- Something goes wrong here
+						pushItemToStorage(4)
 					else
 						return false
 					end
 				end
 			end
+			if not checkIfEmptyInventory() then
+				clearInventory()
+				return craft(id,count)
+			end
 			for o, p in pairs(items) do
-				local item = pullItemFromStorage(o,p) -- fix?
+				local item = pullItemFromStorage(o,p)
 				if type(v[2]) == "table" then
 					for m = 1, #v[3] do
 						if v[3][m] > 0 and v[2][v[3][m]] == o  then
-							robot.transferTo(slots[m],math.ceil((1/v[1])*(count - currentCount)))
-							if math.ceil((1/v[1])*(count - currentCount)) >= (robotInventory[item] and robotInventory[item].count or 0) then
-								robotInventory[item] = nil
-							else
-								robotInventory[item].count = robotInventory[item].count - math.ceil((1/v[1])*(count - currentCount))
-							end
+							turtle.transferTo(slots[m],math.ceil((1/v[1])*count))
+							updateInternalInventory(item)
+							updateInternalInventory(slots[m])
 						end
 					end
 				else
 					for m = 2, #v do
 						if v[m] == o then
-							robot.transferTo(slots[m - 1],math.ceil((1/v[1])*(count - currentCount)))
-							if math.ceil((1/v[1])*(count - currentCount)) >= robotInventory[item].count then
-								robotInventory[item] = nil
-							else
-								robotInventory[item].count = robotInventory[item].count - math.ceil((1/v[1])*(count - currentCount))
-							end
+							turtle.transferTo(slots[m - 1],math.ceil((1/v[1])*count))
+							updateInternalInventory(item)
+							updateInternalInventory(slots[m - 1])
 						end
 					end
 				end
-				
 			end
-			local buffer = nearestBuffer(id)
-			if buffer == 0 then
-				robot.select(1)
-				cr.craft()
-				stockInventory(true)
-				robot.transferTo(4)
-				updateInternalInventory(4)
-				robot.select(4)
-			else
-				robot.select(buffer)
-				cr.craft()
-				updateInternalInventory(buffer)
-			end
+			turtle.select(4)
+			turtle.craft()
+			updateInternalInventory()
 			return true
 		end
+	else
+		return false
 	end
 	return true
 end
-function pushItemToStorage(slot)
+
+function pushItemToStorage(slotz)
 	local pushChest = 0
-	local originalSlot = robot.select()
-	local currentSlot = robotInventory[slot]
-	robot.select(slot)
+	local originalSlot = turtle.getSelectedSlot()
+	local slot = (slotz and slotz or originalSlot)
+	local currentSlot = turtleInventory[slot]
+	if originalSlot ~= slot then
+		turtle.select(slot)
+	end
 	if #chests > 1 then
-		robot.turnRight()
+		turtle.turnRight()
 	end
 	for i = 1, #chests do
-		local oldCount = robot.count()
-		local drop = robot.dropUp()
-		if drop and robot.count() == 0 then
-			checkUp(i,currentSlot.id,oldCount)
-			robotInventory[slot] = nil
-			break
-		elseif drop then
-			checkUp(i,currentSlot.id,oldCount)
+		local oldCount = turtle.getItemCount()
+		if turtle.dropUp() then
+			if turtle.getItemCount() == 0 then
+				checkUp(i,currentSlot.name,oldCount)
+				turtleInventory[slot] = nil
+				break
+			else
+				checkUp(i,currentSlot.name,oldCount)
+			end
 		end
 		if #chests > 1 and i < #chests then
 			forward()
@@ -711,24 +737,31 @@ function pushItemToStorage(slot)
 		back()
 		back()
 	end
-	robot.turnLeft()
-	robot.select(originalSlot)
+	if #chests > 1 then
+		turtle.turnLeft()
+	end
+	turtle.select(originalSlot)
 end
+
 function forward()
-	return robot.forward()
+	return turtle.forward()
 end
+
 function back()
-	return robot.back()
+	return turtle.back()
 end
+
 function up()
-	return robot.up()
+	return turtle.up()
 end
+
 function down()
-	return robot.down()
+	return turtle.down()
 end
+
 function updateAllChests()
 	if #chests > 1 then
-		robot.turnRight()
+		turtle.turnRight()
 	end
 	for i = 1, #chests do
 		chests[i] = checkUp()
@@ -744,42 +777,66 @@ function updateAllChests()
 		end
 	end
 	if #chests > 1 then
-		robot.turnLeft()
+		turtle.turnLeft()
 	end
 end
+
+function digAndUpdate(dir)
+	local slot = turtle.getSelectedSlot()
+	local there, inspect = false, {}
+	if dir == "up" then
+		there, inspect = turtle.inspectUp()
+	elseif dir == "down" then
+		there, inspect = turtle.inspectDown()
+	else
+		there, inspect = turtle.inspect()
+	end
+	if there then
+		local bf = 0
+		if inspect.name == "minecraft:dirt" then
+			bf = nearestBuffer(inspect.name)
+		elseif inspect.name == "minecraft:stone" then
+			bf = nearestBuffer("minecraft:cobblestone")
+		else
+			bf = nearestBuffer()
+		end
+		turtle.select(bf)
+		if dir == "up" then
+			turtle.digUp()
+		elseif dir == "down" then
+			turtle.digDown()
+		else
+			turtle.dig()
+		end
+		updateInternalInventory(bf)
+		mergeStacks()
+	end
+	turtle.select(slot)
+end
+
 function makePickaxe(i)
 	if i == #chests then
-		if robot.detect() then
-			local bf = nearestBuffer()
-			robot.select(bf)
-			if robot.swing(sides.front) == false then
-				for o = 1, i - 1 do
-					back()
-					back()
-				end
-				craft("minecraft:iron_pickaxe",1)
-				craft("minecraft:chest",1)
-				ic.equip()
-				for o = 1, i - 1 do
-					forward()
-					forward()
-				end
-				bf = nearestBuffer()
-				robot.select(bf)
-				robot.swing(sides.front)
-			end
-			updateInternalInventory(bf)
-			mergeStacks()
+		if turtle.detect() then
+			digAndUpdate()
 		end
 	end
 	forward()
 end
+
 function slotsLeft()
-	return inventorySize - #robotInventory - 9
+	return inventorySize - #turtleInventory - 9
 end
+
 local miners = 0
-function addNewMiner()
-	printTitle("Ultimate Program Running","Adding New Miner")
+
+function reduceByOne(slot)
+	if turtleInventory[slot].count == 1 then
+		turtleInventory[slot] = nil 
+	else
+		turtleInventory[slot].count = turtleInventory[slot].count - 1
+	end
+end
+function addNewMiner() -- Needs fixing or testing!
 	stockInventory()
 	--[[
 	local list = {"minecraft:hopper","ComputerCraft:CC-TurtleExpanded","ComputerCraft:CC-Peripheral","ComputerCraft:disk"}
@@ -788,203 +845,102 @@ function addNewMiner()
 	end
 ]]
 	if canCraft("minecraft:hopper",1) and canCraft("ComputerCraft:CC-TurtleExpanded",1) and canCraft("ComputerCraft:CC-Peripheral",1) and canCraft("ComputerCraft:disk",1) then
-		
-		if slotsLeft() < 3 then
+		printTitle("Ultimate Program Running","Adding New Miner")
+		if slotsLeft() < 4 then
 			stockInventory()
 		end
 		craft("minecraft:hopper",1)
 		craft("ComputerCraft:CC-Peripheral",1)
 		craft("ComputerCraft:CC-TurtleExpanded",1)
 		pullItemFromStorage("ComputerCraft:disk",1)
-		local droneSlot = robot.select()
+		local droneSlot = turtle.getSelectedSlot()
 		-- nearestBuffer("ComputerCraft:CC-Turtle")
-		robot.turnLeft()
-		robot.forward()
-		if robot.up() == nil then
-			local br = nearestBuffer()
-			robot.select(br)
-			if robot.swingUp(sides.up) == false then
-				back()
-				craft("minecraft:iron_pickaxe",1)
-				ic.equip()
-				forward()
-				robot.select(br)
-				robot.swingUp(sides.up)
-			end
-			updateInternalInventory(br)
-			mergeStacks()
-			robot.up()
+		turtle.turnLeft()
+		forward()
+		if not turtle.up() then
+			digAndUpdate("up")
+			turtle.up()
 		end
 		for i = 1, miners + 1 do
 			if math.ceil(i/2) == miners + 1 then
-				if robot.detect() then
-					if robot.durability() == nil then
-						for o = 1, i - 1 do
-							back()
-						end
-						craft("minecraft:iron_pickaxe",1)
-						ic.equip()
-						for o = 1, i - 1 do
-							forward()
-						end
-					end
-					local br = nearestBuffer()
-					robot.select(br)
-					robot.swing(sides.front)
-					updateInternalInventory(br)
-					mergeStacks()
+				if turtle.detect() then
+					digAndUpdate()
 				end
 			end
-			forward()
-		end
-		if robot.down() == nil then
-			local bf = nearestBuffer()
-			robot.select(bf)
-			if robot.swingDown(sides.down) == false then
-				for i = 1, miners + 1 do
-					back()
-				end
-				down()
-				back()
-				craft("minecraft:iron_pickaxe",1)
-				ic.equip()
+			if not forward() then
+				digAndUpdate()
 				forward()
-				up()
-				for i = 1, miners + 1 do
-					forward()
-				end
-				robot.select(bf)
-				robot.swingDown(sides.down)
 			end
-			updateInternalInventory(bf)
-			mergeStacks()
-			robot.down()
+		end
+		if not down() then
+			digAndUpdate("down")
+			down()
 		end
 		pullItemFromStorage("ComputerCraft:CC-Peripheral",1)
-		if robot.placeDown() == false then
-			local bf = nearestBuffer()
-			robot.select(bf)
-			if robot.swingDown(sides.down) == false then
-				up()
-				for i = 1, miners + 1 do
-					back()
-				end
-				craft("minecraft:iron_pickaxe",1)
-				ic.equip()
-				for i = 1, miners + 1 do
-					forward()
-				end
-				up()
-				bf = nearestBuffer()
-				robot.select(bf)
-				robot.swingDown(sides.down)
-			end
-			updateInternalInventory(bf)
-			mergeStacks()
+		if turtle.placeDown() == false then
+			digAndUpdate("down")
 			pullItemFromStorage("ComputerCraft:CC-Peripheral",1)
-			robot.placeDown()
+			turtle.placeDown()
 		end
-		updateInternalInventory(robot.select())
+		reduceByOne(turtle.getSelectedSlot())
 		mergeStacks()
 		local t = pullItemFromStorage("ComputerCraft:disk",1)
-		robot.dropDown()
-		robotInventory[t] = nil
-		robot.turnRight()
+		turtle.dropDown()
+		turtleInventory[t] = nil
+		turtle.turnRight()
 		local it = pullItemFromStorage("minecraft:hopper",1)
-		if robot.place(sides.right) == false then
-			local bf = nearestBuffer()
-			robot.select(bf)
-			if robot.swing() == false then
-				up()
-				robot.turnLeft()
-				for o = 1, miners + 1 do
-					back()
-				end
-				craft("minecraft:iron_pickaxe",1)
-				ic.equip()
-				for o = 1, miners + 1 do
-					forward()
-				end
-				robot.turnRight()
-				down()
-				bf = nearestBuffer()
-				robot.select(bf)
-				robot.swing(sides.front)
-				updateInternalInventory(bf)
-				mergeStacks()
-			end
-			pullItemFromStorage("minecraft:hopper",1)
-			robot.place(sides.right)
-		else
-			updateInternalInventory(it)
-		end
+		digAndUpdate()
+		forward()
+		turtle.turnLeft()
+		digAndUpdate()
+		forward()
+		turnAround()
+		turtle.select(it)
+		turtle.place()
+		reduceByOne(it)
 		mergeStacks()
-		-- Also put disk into drive
+		digAndUpdate("up")
 		up()
-		robot.turnLeft()
+		digAndUpdate()
+		forward()
+		turtle.turnRight()
+		forward()
+		digAndUpdate("up")
+		up()
 		local tr = pullItemFromStorage("ComputerCraft:CC-TurtleExpanded",1)
-		robot.placeDown(sides.right)
-		if robotInventory[tr].count == 1 then
-			robotInventory[tr] = nil
-		else
-			robotInventory[tr].count = robotInventory[tr].count - 1
-		end
-		robot.useDown()
+		turtle.placeDown()
+		turtle.turnRight()
+		reduceByOne(tr)
+		peripheral.call("bottom","turnOn")
 		for i = 1, miners + 1 do
 			back()
 		end
-		robot.down()
-		robot.back()
-		robot.turnRight()
+		turtle.down()
+		back()
+		turtle.turnRight()
 		miners = miners + 1
 		return true
 	end
 	return false
 end
+
 function addNewChest()
 	stockInventory()
 	craft("minecraft:chest",1)
-	robot.select(nearestBuffer("minecraft:chest"))
-	robot.turnRight()
-	local dur = {robot.durability()}
-	if not dur[1] and dur[2] == "no tool equipped" then
-		craft("minecraft:iron_pickaxe",1)
-		ic.equip()
-	end
+	turtle.turnRight()
 	for i = 1, #chests do
 		makePickaxe(i)
 		makePickaxe(i)
 	end
-	if robot.detectUp() then
-		if robot.durability() == nil then
-			for o = 1, i - 1 do
-				back()
-				back()
-			end
-			robot.turnRight()
-			craft("minecraft:chest",1)
-			craft("minecraft:iron_pickaxe",1)
-			ic.equip()
-			robot.turnLeft()
-			for o = 1, i - 1 do
-				forward()
-				forward()
-			end
-			robot.select(nearestBuffer())
-			robot.swingUp(sides.up)
-		end
-	end
+	digAndUpdate("up")
 	local chest = pullItemFromStorage("minecraft:chest",1)
-	robot.placeUp()
-	robotInventory[chest].count = robotInventory[chest].count - 1
-	if robotInventory[chest].count == 0 then
-		robotInventory[chest] = nil
-	end
+	turtle.placeUp()
+	reduceByOne(chest)
 	for i = 1, #chests * 2 do
 		back()
 	end
 	chests[#chests + 1] = {stacks = {}, size = 27}
-	robot.turnLeft()
+	turtle.turnLeft()
 end
 --[[
 for i, v in pairs(chests[1][1]) do
@@ -1027,18 +983,18 @@ tile.computercraft:turtle
 --[[
 while true do
 	print("Ultimate Program Crafter")
-	io.write("Item Name: ")
+	write("Item Name: ")
 	local itemName = ""
-	itemName = io.read()
+	itemName = read()
 	if not itemName then
 		break
 	end
 	if string.gsub(itemName," ","") == "" then
 		break
 	end
-	io.write("Item Count: ")
+	write("Item Count: ")
 	local itemCount = ""
-	itemCount = tonumber(io.read())
+	itemCount = tonumber(read())
 	if not itemCount then
 		break
 	end
@@ -1052,9 +1008,9 @@ end
 ]]--
 --stockInventory()
 function getItemName()
-	io.write("Item Name: ")
+	write("Item Name: ")
 	local itemName = ""
-	itemName = io.read()
+	itemName = read()
 	if not itemName then
 		return nil
 	end
@@ -1064,69 +1020,62 @@ function getItemName()
 	if string.gsub(itemName," ","") == "" then
 		return nil
 	end
-	io.write("Item Count: ")
+	write("Item Count: ")
 	local itemCount = ""
-	itemCount = tonumber(io.read())
+	itemCount = tonumber(read())
 	if not itemCount then
 		return nil
 	end
 	return itemName, itemCount
 end
-function getScreenSize()
-	if term.getViewport then
-		return term.getViewport()
-	else
-		return component.gpu.getResolution()
-	end
-end
 function printCenter(str,line)
-	local x, y = getScreenSize()
-	term.setCursor((x/2) - (string.len(str)/2),line)
+	local x, y = term.getSize()
+	term.setCursorPos((x/2) - (string.len(str)/2),line)
 	term.clearLine()
-	term.setCursor((x/2) - (string.len(str)/2),line)
-	term.write(str)
+	term.setCursorPos((x/2) - (string.len(str)/2),line)
+	write(str)
 end
 function printLine()
-	term.write(string.rep("-",({getScreenSize()})[1]))
+	write(string.rep("-",({term.getSize()})[1]))
 end
 function printTitle(...)
 	for i = 1, #({...}) do
 		printCenter(({...})[i],i)
 	end
-	term.setCursor(1,#({...}) + 1)
+	term.setCursorPos(1,#({...}) + 1)
 	printLine()
 end
 function getInput()
-	robot.turnAround()
+	turnAround()
 	term.clear()
 	printTitle("Ultimate Program Crafting Terminal", "Type \"exit\" to exit, or press enter to cancel.")
 	local itemName, itemCount = getItemName()
 	if itemName then
 		if itemName == "exit" then
-			robot.turnAround()
+			turnAround()
 			return false
 		else
 			if canCraft(itemName,itemCount) then
 				print("Processing...")
-				robot.turnAround()
+				turnAround()
 				craft(itemName,itemCount)
-				robot.turnAround()
-				robot.drop(itemCount)
-				updateInternalInventory(robot.select())
+				turnAround()
+				turtle.drop(itemCount)
+				updateInternalInventory(turtle.getSelectedSlot())
 			else
 				print("Cannot craft items.")
 			end
 		end
 	end
-	robot.turnAround()
+	turnAround()
 	return true
 end
 function checkRedstone()
-	if component.redstone.getInput(sides.back) > 0 then
+	if rs.getInput("back") then
 		if getInput() == false then
 			term.clear()
 			printTitle("Ultimate Program Closed")
-			term.setCursor(1,3)
+			term.setCursorPos(1,3)
 			return true
 		else
 			term.clear()
@@ -1147,18 +1096,17 @@ while true do
 	addNewMiner()
 end]]
 term.clear()
-printTitle("Ultimate Program Loading","Checking External Inventory")
+printTitle("Ultimate Program Loading","Initializing External Inventory")
 chests = {checkUp()}
-printTitle("Ultimate Program Loading","Checking Internal Inventory")
+printTitle("Ultimate Program Loading","Initializing Internal Inventory")
 updateInternalInventory()
-printTitle("Ultimate Program Loading","Stocking Inventory")
 stockInventory()
 term.clear()
-printTitle("Ultimate Program Running","Idle")
 local stop = false
 while true do
 	mergeStacks()
-	stockInventory()--[[
+	stockInventory()
+	printTitle("Ultimate Program Running","Idle")
 	if checkTotalInventoryCapacity() < inventorySize then
 		repeat
 			if checkRedstone() then stop = true; break end
@@ -1166,9 +1114,12 @@ while true do
 		until checkTotalInventoryCapacity() >= inventorySize
 		if stop then break end
 	end
-	mergeStacks()]]
+	sleep(0.1)
+	mergeStacks()
 	if checkRedstone() then break end
 	addNewMiner()
+	printTitle("Ultimate Program Running","Idle")
+	sleep(0.1)
 	mergeStacks()
 	if checkRedstone() then break end
 end
