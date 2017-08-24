@@ -202,6 +202,7 @@ function emptyBufferChest()
 end
 
 function clearInventory(dontClearOne)
+	printTitle("Clearing Inventory")
 	local chestz = 0
 	local lastSlot = (dontClearOne and 2 or 1)
 	if #chests == 1 then
@@ -258,7 +259,6 @@ function nearestBuffer(id)
 end
 
 function stockInventory(dontClearOne)
-	--printTitle("Ultimate Program Running","Stocking Inventory")
 	repeat
 	for i = 1, inv do
 		--printTitle("Ultimate Program Running","Checking front chest")
@@ -353,25 +353,31 @@ function pullItemFromStorage(id,count)
 	local done = false
 	for i = 1, #chestTotal do
 		if chestTotal[i] > 0 then
+			local done2 = false
 			repeat
-			for o, p in pairs(chests[i]["stacks"]) do
-				if p.id == id then
+				for o, p in pairs(chests[i]["stacks"]) do
+					if done2 then break end
 					local newCount = (turtleInventory[intoSlot] and turtleInventory[intoSlot].count or 0)
 					if newCount >= count then
 						done = true
+						done2 = true
 						break
 					end
-					peripheral.call("top","pushItemIntoSlot","down",o,count - newCount,intoSlot)
-					updateInternalInventory(intoSlot)
-					if p.qty <= count - newCount then
-						chests[i]["stacks"][o] = nil
-						break
-					else
-						chests[i]["stacks"][o].qty = p.qty - count - newCount
+					if p.id == id then
+						peripheral.call("top","pushItemIntoSlot","down",o,count - newCount,intoSlot)
+						updateInternalInventory(intoSlot)
+						if p.qty <= count - newCount then
+							chests[i]["stacks"][o] = nil
+							done = p.qty == count - newCount
+							break
+						else
+							chests[i]["stacks"][o].qty = p.qty - count - newCount
+							done2 = true
+							break
+						end
 					end
 				end
-			end
-			until done
+			until done2
 		end
 		if needsToMove and i < #chestTotal and not done then
 			forward()
@@ -402,10 +408,8 @@ end
 
 
 function canCraft(id,count)
-	--printTitle("Checking craft "..count.." of "..id)
 	local currentCount = 0
 	currentCount = currentCount + itemCount(id)
-	--printTitle("Currently "..currentCount.." of "..id)
 	if currentCount >= count then
 		return true
 	end
@@ -557,7 +561,7 @@ function clearFurnaceBufferChest()
 end
 
 function craft(id,count)
-	printTitle("Ultimate Program Running","Crafting "..count.." of "..id)
+	printTitle("Ultimate Program Running","Making "..count.." "..id)
 	-- peripheral.call("top","getInventorySize")
 	local itc = itemCount(id)
 	local currentCount = itc
@@ -578,6 +582,7 @@ function craft(id,count)
 		end
 	end
 	if canCraft(id,count) then
+		sleep(1)
 		local ready = false
 		local furnaceItem = ""
 		if furnaceRecipes[id] then
@@ -1048,8 +1053,9 @@ end
 function getInput()
 	turnAround()
 	term.clear()
-	printTitle("Ultimate Program Crafting Terminal", "Type \"exit\" to exit, or press enter to cancel.")
+	printTitle("Ultimate Program Crafting Terminal", "Type \"exit\" to exit, enter to cancel.")
 	local itemName, itemCount = getItemName()
+	itemCount = tonumber(itemCount)
 	if itemName then
 		if itemName == "exit" then
 			turnAround()
