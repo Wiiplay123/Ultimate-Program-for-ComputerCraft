@@ -5,6 +5,8 @@ INSTRUCTIONS:
 Place single chests in front of and on top of turtle.
 Place a single hopper to the left of front chest.
 Place a furnace under the turtle.
+Place a single redstone dust behind furnace.
+Place a single pressure plate behind redstone dust.
 Add to instructions as more requirements are added.
 
 
@@ -55,7 +57,8 @@ if peripheral == nil then
 	error("Program is only designed for ComputerCraft.",0)
 end
 local cautious = true
-local minFuel = 64
+local makeMiners = false
+local minFuel = 5
 local inventorySize = 16
 --local turtleInventory = {}
 turtleInventory = {}
@@ -90,15 +93,20 @@ local craftingRecipes = {
 --["minecraft:diamond"] = {1,{"usefulDNS:PStone","minecraft:gold_ingot"},{1,2,0,2,2,0,2}},
 --["minecraft:sand"] = {1,"usefulDNS:PStone","minecraft:cobblestone","","","minecraft:cobblestone"},
 ["minecraft:stone_slab"] = {6,{"minecraft:stone"},{1,1,1}},
-["minecraft:hopper"] = {1,{"minecraft:iron_ingot","minecraft:chest"},{1,0,1,1,2,1,0,1,0}}
+["minecraft:hopper"] = {1,{"minecraft:iron_ingot","minecraft:chest"},{1,0,1,1,2,1,0,1,0}},
+["ComputerCraft:pocketComputer"] = {1,{"minecraft:gold_ingot","minecraft:golden_apple","minecraft:glass_pane"},{1,1,1,1,2,1,1,3,1}},
+["minecraft:golden_apple"] = {1,{"minecraft:gold_ingot","minecraft:apple"},{1,1,1,1,2,1,1,1,1}},
+["OpenPeripheral:pim"] = {1,{"minecraft:obsidian","minecraft:chest","minecraft:redstone"},{1,1,1,2,3,2}}
 }
 local furnaceRecipes = {
 	["minecraft:stone"] = "minecraft:cobblestone",
 	["minecraft:iron_ingot"] = "minecraft:iron_ore",
 	["minecraft:gold_ingot"] = "minecraft:gold_ore",
 	["minecraft:glass"] = "minecraft:sand",
+	["minecraft:cooked_chicken"] = "minecraft:chicken",
 	["minecraft:cooked_porkchop"] = "minecraft:porkchop",
-	["minecraft:cooked_beef"] = "minecraft:beef"
+	["minecraft:cooked_beef"] = "minecraft:beef",
+	["minecraft:cooked_fished"] = "minecraft:fish"
 }
 
 function notCrafting(s)
@@ -509,6 +517,8 @@ function mergeStacks()
 	end
 end
 function checkFurnaceFuel()
+	printTitle("Ultimate Program Running","Checking furnace fuel")
+	sleep(0.1)
 	local originalSlot = turtle.getSelectedSlot()
 	local fuelSlot = peripheral.call("bottom","getStackInSlot",2)
 	if fuelSlot == nil or fuelSlot.qty < minFuel then
@@ -519,10 +529,16 @@ function checkFurnaceFuel()
 				local newSlot = pullItemFromStorage("minecraft:coal",minStack(coal,fuelSlot.qty))
 				--peripheral.call("bottom","pushItemIntoSlot("west",3,1,9)) 1 fuel from slot 3 to slot 9 of dropper
 				--peripheral.call("bottom","pullItemIntoSlot","up"
-				turtle.dropDown()
+				turnAround()
+				turtle.drop()
+				turnAround()
 				turtleInventory[newSlot] = nil
 				turtle.select(originalSlot)
 				updateInternalInventory(newSlot)
+				for i = 1, 50 do
+					if peripheral.call("bottom","getStackInSlot",2).qty >= minFuel then break end
+					sleep(0.1)
+				end
 			end
 		end
 	end
@@ -566,7 +582,6 @@ function craft(id,count)
 	local itc = itemCount(id)
 	local currentCount = itc
 	if itc > 0 then
-		
 		local b = nearestBuffer(id)
 		local c = turtle.getItemCount(b)
 		if c >= count and count > 0 then
@@ -582,7 +597,6 @@ function craft(id,count)
 		end
 	end
 	if canCraft(id,count) then
-		sleep(1)
 		local ready = false
 		local furnaceItem = ""
 		if furnaceRecipes[id] then
@@ -592,26 +606,27 @@ function craft(id,count)
 		end
 		if ready then
 			-- Furnace stuff happens here
-			turtle.turnLeft()
-			turtle.turnRight()
 			repeat
 				checkFurnaceFuel()
 			until not peripheral.call("bottom","getStackInSlot",1)
-			turtle.turnLeft()
-			turtle.turnRight()
 			local stack = peripheral.call("bottom","getStackInSlot",3)
 			if stack then
 				if nearestBuffer(stack.id) == 0 then
 					stockInventory()
 				end
 				local bfr = nearestBuffer(stack.id)
-				turtle.turnLeft()
 				turtle.turnRight()
-				peripheral.call("bottom","pushItem",2,3,64,bfr)
+				turtle.back()
+				turtle.down()
+				turtle.suck()
+				turtle.up()
+				turtle.forward()
+				turtle.turnLeft()
+				--peripheral.call("bottom","pushItem",2,3,64,bfr)
 				updateInternalInventory(bfr)
 			end 
 			pullItemFromStorage(furnaceRecipes[id],count)
-			turtle.drop()
+			turtle.dropDown()
 			repeat
 				checkFurnaceFuel()
 			until not peripheral.call("bottom","getStackInSlot",1)
@@ -621,9 +636,14 @@ function craft(id,count)
 					stockInventory()
 				end
 				local bfr = nearestBuffer(stack.id)
-				turtle.turnLeft()
 				turtle.turnRight()
-				peripheral.call("bottom","pushItem",2,3,64,bfr)
+				turtle.back()
+				turtle.down()
+				turtle.suck()
+				turtle.up()
+				turtle.forward()
+				turtle.turnLeft()
+				--peripheral.call("bottom","pushItem",2,3,64,bfr)
 				updateInternalInventory(bfr)
 			end
 			if itemCount(id) >= count then
@@ -1053,13 +1073,16 @@ end
 function getInput()
 	turnAround()
 	term.clear()
-	printTitle("Ultimate Program Crafting Terminal", "Type \"exit\" to exit, enter to cancel.")
+	printTitle("Ultimate Program Interface", "Type \"exit\" to exit, enter to cancel.","\"add miner\" to add miner.\"")
 	local itemName, itemCount = getItemName()
 	itemCount = tonumber(itemCount)
 	if itemName then
 		if itemName == "exit" then
 			turnAround()
 			return false
+		elseif itemName == "add miner" then
+			print("Attempting to add new miner...")
+			addNewMiner()
 		else
 			if canCraft(itemName,itemCount) then
 				print("Processing...")
@@ -1077,7 +1100,7 @@ function getInput()
 	return true
 end
 function checkRedstone()
-	if rs.getInput("back") then
+	if rs.getInput("bottom") then
 		if getInput() == false then
 			term.clear()
 			printTitle("Ultimate Program Closed")
@@ -1123,7 +1146,7 @@ while true do
 	sleep(0.1)
 	mergeStacks()
 	if checkRedstone() then break end
-	addNewMiner()
+	if makeMiners then addNewMiner() end
 	printTitle("Ultimate Program Running","Idle")
 	sleep(0.1)
 	mergeStacks()
