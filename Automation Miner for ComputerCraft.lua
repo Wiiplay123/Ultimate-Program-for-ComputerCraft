@@ -3,16 +3,15 @@
 local minFuel = 200
 
 function beginning()
-	if turtle.suckDown() then
-		turtle.digDown()
-		turtle.select(3)
-		turtle.drop()
-		turtle.select(2)
-		turtle.drop()
-		turtle.turnLeft()
-		turtle.turnLeft()
-		turtle.select(1)
-	end
+	turtle.suckDown()
+	turtle.digDown()
+	turtle.select(3)
+	turtle.drop()
+	turtle.select(2)
+	turtle.drop()
+	turtle.turnLeft()
+	turtle.turnLeft()
+	turtle.select(1)
 end
 beginning()
 
@@ -86,6 +85,9 @@ function checkFuel()
 			if turtle.getFuelLevel() >= minFuel then
 				break
 			end
+			if p == 16 then
+				print("Failed to refuel.")
+			end
 		end
 		turtle.select(1)
 	end
@@ -122,7 +124,6 @@ function verticalMine(mines)
 					turtle.digUp()
 				until up()
 			end
-			up()
 			i = i - 1
 		until forward()
 	end
@@ -171,7 +172,7 @@ function verticalMine(mines)
 		end
 	end
 end
-local mines = 0
+local mines = ((#{...} > 0) and tonumber(({...})[1]) or 0)
 while true do
 	for i = 1, mines * 4 do
 		repeat
