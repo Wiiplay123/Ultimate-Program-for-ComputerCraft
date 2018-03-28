@@ -81,7 +81,7 @@ function checkFuel()
 		for p = 1, 16 do
 			turtle.select(p)
 			repeat
-			until turtle.getFuelLevel() >= minFuel or not turtle.refuel(1)
+			until turtle.getFuelLevel() >= minFuel or not turtle.refuel(64)
 			if turtle.getFuelLevel() >= minFuel then
 				break
 			end

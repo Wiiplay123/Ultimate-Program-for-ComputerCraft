@@ -6,8 +6,9 @@ Turtle must have pickaxe on right side, and crafting table on left side.
 Place single chests in front of and on top of turtle.
 Place a single hopper to the left of front chest.
 Place a furnace under the turtle.
-Place a single redstone dust behind furnace.
-Place a single pressure plate behind redstone dust.
+Place a hopper behind furnace.
+Place a single redstone dust in front of the furnace.
+Place a single pressure plate in front of the redstone dust.
 Add to instructions as more requirements are added.
 
 
@@ -70,12 +71,18 @@ turtleInventory = {}
 --local chests = {}
 chests = {}
 local inv = peripheral.call("front","getInventorySize")
+if inv == nil then
+	repeat
+		turtle.turnLeft()
+		inv = peripheral.call("front","getInventorySize")
+	until inv
+end
 local slots = {1,2,3,5,6,7,9,10,11}
 local craftingRecipes = {
 ["minecraft:planks"] = {4,"minecraft:log"},
 ["Natura:planks"] = {4,"Natura:tree"},
 ["minecraft:stick"] = {4,"minecraft:planks","","","minecraft:planks"},
-["IronChest:woodIronUpgrade"] = {1,{"minecraft:iron_ingot","minecraft:planks"},{1,1,1,1,2,1,1,1,1}},
+["IronChest:woodIronUpgrade"] = {{1,{"minecraft:iron_ingot","minecraft:planks"},{1,1,1,1,2,1,1,1,1}},{1,{"minecraft:iron_ingot","Natura:planks"},{1,1,1,1,2,1,1,1,1}}},
 ["IronChest:ironGoldUpgrade"] = {1,{"minecraft:gold_ingot","minecraft:iron_ingot"},{1,1,1,1,2,1,1,1,1}},
 ["IronChest:goldDiamondUpgrade"] = {1,{"minecraft:glass","minecraft:diamond","minecraft:gold_ingot"},{1,1,1,2,3,2,1,1,1}},
 ["minecraft:glass_pane"] = {16,{"minecraft:glass"},{1,1,1,1,1,1}},
@@ -257,15 +264,17 @@ function clearInventory(dontClearOne)
 	else
 		for i = 1, #chests do
 			for p = lastSlot, inventorySize do
-				if turtleInventory[p] then
+				local detail = turtle.getItemDetail(p)
+				if detail then
 					turtle.select(p)
 					if not turtle.dropUp() then
-						lastSlot = p
 						updateInternalInventory()
+						lastSlot = p
 						chests[i] = checkUp()
 						break
 					end
-					checkUp(i,turtleInventory[p].name,turtleInventory[p].count)
+					checkUp(i,detail.name,detail.count)
+					updateInternalInventory(p)
 				end
 			end
 			if i < #chests and not ((lastSlot == inventorySize) or checkIfEmptyInventory()) then
@@ -276,17 +285,17 @@ function clearInventory(dontClearOne)
 				forward()
 				chestz = chestz + 1
 			end
-		end --[[
+		end
 		for i = 1, chestz do
-			chests[chestz + 1 - i] = checkUp()
-			back()
-			back()
-		end ]]
+			chests[chestz + 2 - i] = checkUp()
+			repeat until back()
+			repeat until back()
+		end
 		if chestz > 0 then
 			turtle.turnLeft()
 		end
 	end
-	turtleInventory = {}
+	updateInternalInventory()
 end
 
 function nearestBuffer(id)
@@ -299,35 +308,36 @@ function nearestBuffer(id)
 end
 
 function stockInventory(dontClearOne)
+	updateInternalInventory()
+	local slot = turtle.getSelectedSlot()
+	local selecting = false
 	repeat
-	for i = 1, inv do
 		--printTitle("Ultimate Program Running","Checking front chest")
 		local breaking = false
+		local s = false
 		repeat
-			local sl = peripheral.call("front","getStackInSlot",i)
-			if sl then
-				--print(i)
-				local bu = nearestBuffer(sl.id)
-				if bu == 0 or not bu then
-					breaking = true
-					break
-				end
-				turtle.select(bu)
-				--[[
-				if not peripheral.call("front","pushItemIntoSlot",i,(turtleInventory[bu] and (turtleInventory[bu].maxSize - turtleInventory[bu].count) or sl.qty),turtle.getSelectedSlot()) then
-					breaking = true
-				end]]
-				if not turtle.suck() then
-					breaking = true
-				end
-				updateInternalInventory(bu)
+			if not emptyBufferChest() then
+				turtle.select(1)
+				selecting = true
+			else
+				break
 			end
-		until breaking or not sl
-	end
-	if slotsLeft() < 4 or nearestBuffer() == 0 then
-		clearInventory(dontClearOne)
-	end
+			if not turtle.suck() then
+				break
+			else
+				s = true
+			end
+		until emptyBufferChest()
+		updateInternalInventory()
+		if s then clearCrafting() end
+		if slotsLeft() < 4 or nearestBuffer() == 0 then
+			clearInventory(dontClearOne)
+			updateInternalInventory()
+		end
 	until emptyBufferChest()
+	if selecting then
+		turtle.select(slot)
+	end
 end
 
 function pullItemFromStorage(id,count)
@@ -394,45 +404,37 @@ function pullItemFromStorage(id,count)
 	local done = false
 	for i = 1, #chestTotal do
 		if chestTotal[i] > 0 then
-			local done2 = false
-			repeat
-				for o, p in pairs(chests[i]["stacks"]) do
-					if done2 then break end
-					local newCount = (turtleInventory[intoSlot] and turtleInventory[intoSlot].count or 0)
-					if newCount >= count then
-						done = true
-						done2 = true
+			for o, p in pairs(chests[i]["stacks"]) do
+				local newCount = (turtleInventory[intoSlot] and turtleInventory[intoSlot].count or 0)
+				if newCount >= count then
+					done = true
+					break
+				end
+				if p.id == id then
+					peripheral.call("top","pushItemIntoSlot","down",o,count - newCount,intoSlot)
+					updateInternalInventory(intoSlot)
+					if p.qty <= count - newCount then
+						chests[i] = checkUp()
+						done = p.qty == count - newCount
+						if done then break end
+					else
+						chests[i]["stacks"][o].qty = p.qty - count - newCount
 						break
 					end
-					if p.id == id then
-						peripheral.call("top","pushItemIntoSlot","down",o,count - newCount,intoSlot)
-						updateInternalInventory(intoSlot)
-						if p.qty <= count - newCount then
-							chests[i]["stacks"][o] = nil
-							done = p.qty == count - newCount
-							break
-						else
-							chests[i]["stacks"][o].qty = p.qty - count - newCount
-							done2 = true
-							break
-						end
-					end
 				end
-			until done2
-		end
-		if needsToMove and i < #chestTotal and not done then
-			forward()
-			forward()
-			moves = moves + 1
+			end
 		end
 		if done then
 			break
+		elseif needsToMove and i < #chestTotal and not done then
+			bulldoze(2)
+			moves = moves + 1
 		end
 	end
 	if needsToMove then
 		for i = 1, moves do
-			back()
-			back()
+			repeat until back()
+			repeat until back()
 		end
 		turtle.turnLeft()
 	end
@@ -498,11 +500,17 @@ function canCraft(id,count)
 				local v = second
 				if canCraftInstance(second,count) then
 					return true
+				else
+					print("Could not craft "..count.." of "..id)
+					sleep(1)
 				end
 			end
 		else
 			if canCraftInstance(v,count) then
 				return true
+			else
+				print("Could not craft "..count.." of "..id)
+				sleep(1)
 			end
 		end
 	end
@@ -563,10 +571,17 @@ function mergeStacks()
 		mergeStack(names[i])
 	end
 end
+
+function rf()
+	turtle.turnLeft()
+	turtle.turnRight()
+end
+
 function checkFurnaceFuel()
 	printTitle("Ultimate Program Running","Checking furnace fuel")
 	sleep(0.1)
 	local originalSlot = turtle.getSelectedSlot()
+	rf()
 	local fuelSlot = peripheral.call("bottom","getStackInSlot",2)
 	if fuelSlot == nil or fuelSlot.qty < minFuel then
 		fuelSlot = (fuelSlot and fuelSlot or {["qty"] = 0})
@@ -574,8 +589,6 @@ function checkFurnaceFuel()
 		if coal - fuelSlot.qty > 0 then
 			if minStack(coal,fuelSlot.qty) > 0 then
 				local newSlot = pullItemFromStorage("minecraft:coal",minStack(coal,fuelSlot.qty))
-				--peripheral.call("bottom","pushItemIntoSlot("west",3,1,9)) 1 fuel from slot 3 to slot 9 of dropper
-				--peripheral.call("bottom","pullItemIntoSlot","up"
 				turnAround()
 				turtle.drop()
 				turnAround()
@@ -583,6 +596,7 @@ function checkFurnaceFuel()
 				turtle.select(originalSlot)
 				updateInternalInventory(newSlot)
 				for i = 1, 50 do
+					rf()
 					if peripheral.call("bottom","getStackInSlot",2).qty >= minFuel then break end
 					sleep(0.1)
 				end
@@ -618,6 +632,7 @@ function clearCrafting()
 				end
 			end
 		end
+		updateInternalInventory()
 	end
 end
 
@@ -659,7 +674,9 @@ function craft(id,count)
 			-- Furnace stuff happens here
 			repeat
 				checkFurnaceFuel()
+				rf()
 			until not peripheral.call("bottom","getStackInSlot",1)
+			rf()
 			local stack = peripheral.call("bottom","getStackInSlot",3)
 			if stack then
 				if nearestBuffer(stack.id) == 0 then
@@ -667,11 +684,11 @@ function craft(id,count)
 				end
 				local bfr = nearestBuffer(stack.id)
 				turtle.turnRight()
-				turtle.back()
-				turtle.down()
+				back()
+				down()
 				turtle.suck()
-				turtle.up()
-				turtle.forward()
+				up()
+				forward()
 				turtle.turnLeft()
 				--peripheral.call("bottom","pushItem",2,3,64,bfr)
 				updateInternalInventory(bfr)
@@ -679,8 +696,10 @@ function craft(id,count)
 			pullItemFromStorage(furnaceRecipes[id],count)
 			turtle.dropDown()
 			repeat
+				rf()
 				checkFurnaceFuel()
 			until not peripheral.call("bottom","getStackInSlot",1)
+			rf()
 			local stack = peripheral.call("bottom","getStackInSlot",3)
 			if stack then
 				if nearestBuffer(stack.id) == 0 then
@@ -688,11 +707,11 @@ function craft(id,count)
 				end
 				local bfr = nearestBuffer(stack.id)
 				turtle.turnRight()
-				turtle.back()
-				turtle.down()
+				back()
+				down()
 				turtle.suck()
-				turtle.up()
-				turtle.forward()
+				up()
+				forward()
 				turtle.turnLeft()
 				--peripheral.call("bottom","pushItem",2,3,64,bfr)
 				updateInternalInventory(bfr)
@@ -850,18 +869,15 @@ function updateAllChests()
 	for i = 1, #chests do
 		chests[i] = checkUp()
 		if #chests > 1 and i < #chests then
-			forward()
-			forward()
+			bullDoze(2)
 		end
 	end
+	turnAround()
 	if #chests > 1 then
-		for i = 1, #chests - 1 do
-			back()
-			back()
-		end
+		bullDoze((#chests - 1)*2)
 	end
 	if #chests > 1 then
-		turtle.turnLeft()
+		turtle.turnRight()
 	end
 end
 
@@ -999,7 +1015,7 @@ function addNewMiner() -- Needs fixing or testing!
 		for i = 1, miners + 1 do
 			back()
 		end
-		turtle.down()
+		down()
 		back()
 		turtle.turnRight()
 		miners = miners + 1
@@ -1008,51 +1024,66 @@ function addNewMiner() -- Needs fixing or testing!
 	return false
 end
 
+function bulldoze(i)
+	for i = 1, i do
+		if not forward() then repeat turtle.dig() until forward() end
+	end
+end
+
 function addNewChest()
 	stockInventory()
 	if ironChests then
-		local woodToIron = false
-		local ironToGold = false
-		local goldToDiamond = false
-		local firstChoice = 0
 		local firstChest = 0
 		for i = 1, #chests do
-			if chests[i] == 27 and canCraft("IronChest:goldDiamondUpgrade",1) then
-				firstChoice = 27
+			if chests[i].size == 27 and canCraft("IronChest:woodIronUpgrade",1) then
 				firstChest = i
-			elseif chests[i] == 54 and canCraft("IronChest:ironGoldUpgrade",1) then
-				firstChoice = 54
+				craft("IronChest:woodIronUpgrade",1)
+				break
+			elseif chests[i].size == 54 and canCraft("IronChest:ironGoldUpgrade",1) then
 				firstChest = i
-			elseif chests[i] == 81 and canCraft("IronChest:goldDiamondUpgrade",1) then
-				firstChoice = 81
+				craft("IronChest:ironGoldUpgrade",1)
+				break
+			elseif chests[i].size == 81 and canCraft("IronChest:goldDiamondUpgrade",1) then
 				firstChest = i
+				craft("IronChest:goldDiamondUpgrade",1)
+				break
 			end
 		end
-		if firstChoice ~= 0 then
+		if firstChest ~= 0 then
 			if firstChest > 1 then
 				turtle.turnRight()
+				bulldoze((firstChest - 1)*2)
 			end
-			forward()
-			forward()
-			moves = moves + 1
-		
+			turtle.placeUp()
+			chests[firstChest] = checkUp()
+			updateInternalInventory()
+			if firstChest > 1 then
+				turnAround()
+				bulldoze((firstChest - 1)*2)
+				turtle.turnRight()
+			end
+			return true
 		end
 	end
-	craft("minecraft:chest",1)
-	turtle.turnRight()
-	for i = 1, #chests do
-		makePickaxe(i)
-		makePickaxe(i)
+	if canCraft("minecraft:chest",1) then
+		craft("minecraft:chest",1)
+		turtle.turnRight()
+		for i = 1, #chests do
+			makePickaxe(i)
+			makePickaxe(i)
+		end
+		digAndUpdate("up")
+		local chest = pullItemFromStorage("minecraft:chest",1)
+		turtle.placeUp()
+		reduceByOne(chest)
+		for i = 1, #chests * 2 do
+			back()
+		end
+		chests[#chests + 1] = {stacks = {}, size = 27}
+		turtle.turnLeft()
+		return true
 	end
-	digAndUpdate("up")
-	local chest = pullItemFromStorage("minecraft:chest",1)
-	turtle.placeUp()
-	reduceByOne(chest)
-	for i = 1, #chests * 2 do
-		back()
-	end
-	chests[#chests + 1] = {stacks = {}, size = 27}
-	turtle.turnLeft()
+	return false
 end
 --[[
 for i, v in pairs(chests[1][1]) do
@@ -1126,19 +1157,19 @@ function getItemName()
 	if not itemName then
 		return nil
 	end
-	if itemName == "exit" then
+	if itemName == "exit" or itemName == "add miner" or itemName == "count" or itemName == "clear" then
 		return itemName
 	end
 	if string.gsub(itemName," ","") == "" then
 		return nil
 	end
 	write("Item Count: ")
-	local itemCount = ""
-	itemCount = tonumber(read())
-	if not itemCount then
+	local itemCount2 = ""
+	itemCount2 = tonumber(read())
+	if not itemCount2 then
 		return nil
 	end
-	return itemName, itemCount
+	return itemName, itemCount2
 end
 function printCenter(str,line)
 	local x, y = term.getSize()
@@ -1158,36 +1189,57 @@ function printTitle(...)
 	printLine()
 end
 function getInput()
-	turnAround()
+	turtle.turnRight()
 	term.clear()
-	printTitle("Ultimate Program Interface", "Type \"exit\" to exit, enter to cancel.","\"add miner\" to add miner.\"")
-	local itemName, itemCount = getItemName()
-	itemCount = tonumber(itemCount)
+	printTitle("Ultimate Program Interface", "Type \"exit\" to exit, enter to cancel.","\"add miner\",  \"clear\", \"count\".\"")
+	local itemName, itemCount2 = getItemName()
+	itemCount2 = tonumber(itemCount2)
 	if itemName then
-		if itemName == "exit" then
-			turnAround()
+		if string.lower(itemName) == "exit" then
+			turtle.turnLeft()
 			return false
-		elseif itemName == "add miner" then
+		elseif string.lower(itemName) == "add miner" then
 			print("Attempting to add new miner...")
+			turtle.turnLeft()
 			addNewMiner()
+			return true
+		elseif string.lower(itemName) == "clear" then
+			turtle.turnLeft()
+			print("Clearing inventory...")
+			clearCrafting()
+			clearInventory()
+			return true
+		elseif string.lower(itemName) == "count" then
+			write("Item name: ")
+			local itemName2 = read()
+			print(itemCount2)
+			print(itemName2)
+			print("There are "..itemCount(itemName2).." of "..itemName2.." available.")
+			sleep(2)
 		else
-			if canCraft(itemName,itemCount) then
+			if canCraft(itemName,itemCount2) then
 				print("Processing...")
-				turnAround()
-				craft(itemName,itemCount)
-				turnAround()
-				turtle.drop(itemCount)
+				turtle.turnLeft()
+				craft(itemName,itemCount2)
+				turtle.turnRight()
+				turtle.drop(itemCount2)
 				updateInternalInventory(turtle.getSelectedSlot())
 			else
 				print("Cannot craft items.")
+				sleep(0.5)
 			end
 		end
 	end
-	turnAround()
+	turtle.turnLeft()
 	return true
 end
 function checkRedstone()
-	if rs.getInput("bottom") then
+	local e = {"nothing"}
+	if not rs.getInput("bottom") then
+		os.startTimer(0.1)
+		e = {os.pullEvent()}
+	end
+	if rs.getInput("bottom") or e[1] == "key" or e[1] == "char" then
 		if getInput() == false then
 			term.clear()
 			printTitle("Ultimate Program Closed")
@@ -1218,8 +1270,22 @@ checkFuel()
 turtle.turnRight()
 local initChests = 0
 repeat
-	if not forward() then break end
-	if not forward() then back() break end
+	local breakingForward = false
+	repeat 
+		if turtle.detect() then
+			breakingForward = true 
+			break 
+		end 
+	until forward()
+	if breakingForward then break end
+	repeat 
+		if turtle.detect() then
+			breakingForward = true 
+			repeat until back()
+			break 
+		end 
+	until forward()
+	if breakingForward then break end
 	initChests = initChests + 1
 	local check = checkUp()
 	if check then chests[initChests + 1] = check else break end
